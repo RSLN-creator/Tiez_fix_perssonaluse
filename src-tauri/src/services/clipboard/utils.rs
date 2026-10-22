@@ -60,18 +60,6 @@ fn image_ext_from_url(url: &str) -> Option<&'static str> {
     normalize_image_ext(ext)
 }
 
-fn image_ext_from_bytes(bytes: &[u8]) -> Option<&'static str> {
-    let format = image::guess_format(bytes).ok()?;
-    match format {
-        image::ImageFormat::Png => Some("png"),
-        image::ImageFormat::Jpeg => Some("jpg"),
-        image::ImageFormat::Gif => Some("gif"),
-        image::ImageFormat::WebP => Some("webp"),
-        image::ImageFormat::Bmp => Some("bmp"),
-        _ => None,
-    }
-}
-
 fn image_mime_by_ext(ext: &str) -> &'static str {
     match ext {
         "jpg" => "image/jpeg",
@@ -137,7 +125,7 @@ fn fetch_remote_image(url: &str) -> Option<(Vec<u8>, &'static str)> {
 
     let ext = image_ext_from_mime(&mime)
         .or_else(|| image_ext_from_url(url))
-        .or_else(|| image_ext_from_bytes(&bytes))?;
+        .or_else(|| crate::infrastructure::image_ext_from_bytes(&bytes))?;
 
     Some((bytes, ext))
 }
@@ -225,7 +213,7 @@ fn resolve_local_image_src_path(src: &str) -> Option<std::path::PathBuf> {
 }
 
 fn gif_data_url_from_bytes(bytes: &[u8]) -> Option<String> {
-    let ext = image_ext_from_bytes(bytes).or_else(|| {
+    let ext = crate::infrastructure::image_ext_from_bytes(bytes).or_else(|| {
         if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
             Some("gif")
         } else {
@@ -241,7 +229,7 @@ fn gif_data_url_from_bytes(bytes: &[u8]) -> Option<String> {
 }
 
 fn image_data_url_from_bytes(bytes: &[u8]) -> Option<String> {
-    let ext = image_ext_from_bytes(bytes).or_else(|| {
+    let ext = crate::infrastructure::image_ext_from_bytes(bytes).or_else(|| {
         if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
             Some("gif")
         } else {
@@ -1670,7 +1658,14 @@ mod tests {
 
 pub fn detect_content_type(text: &str) -> String {
     let trimmed = text.trim();
-    if trimmed.starts_with("www.") || trimmed.contains("://") && trimmed.split("://").next().map_or(false, |s| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '-' || c == '.')) {
+    if trimmed.starts_with("www.")
+        || trimmed.contains("://")
+            && trimmed.split("://").next().map_or(false, |s| {
+                !s.is_empty()
+                    && s.chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '-' || c == '.')
+            })
+    {
         return "url".to_string();
     }
 
@@ -1742,8 +1737,11 @@ pub fn contains_sensitive_info(text: &str, kinds: &[String], custom_rules: &[Str
     let has_kind = |k: &str| kinds.iter().any(|t| t == k);
 
     if has_kind("url") {
-        let re = URL_RE.get_or_init(|| Regex::new(r"(?i)(?:[a-zA-Z][a-zA-Z0-9+\-.]*://|www\.)\S+").unwrap());
-        if re.is_match(text) { return true; }
+        let re = URL_RE
+            .get_or_init(|| Regex::new(r"(?i)(?:[a-zA-Z][a-zA-Z0-9+\-.]*://|www\.)\S+").unwrap());
+        if re.is_match(text) {
+            return true;
+        }
     }
     if has_kind("phone") {
         let re = PHONE_RE.get_or_init(|| {
@@ -2341,7 +2339,10 @@ mod content_type_tests {
 
         #[test]
         fn ftp_url() {
-            assert_eq!(detect_content_type("ftp://files.example.com/doc.pdf"), "url");
+            assert_eq!(
+                detect_content_type("ftp://files.example.com/doc.pdf"),
+                "url"
+            );
         }
 
         #[test]
@@ -2372,7 +2373,10 @@ mod content_type_tests {
 
         #[test]
         fn code_snippet() {
-            assert_eq!(detect_content_type("const x = 1; function foo() {}"), "code");
+            assert_eq!(
+                detect_content_type("const x = 1; function foo() {}"),
+                "code"
+            );
         }
     }
 
@@ -2449,11 +2453,7 @@ mod content_type_tests {
         #[test]
         fn skips_oversized_text() {
             let big = "a".repeat(5001);
-            assert!(!contains_sensitive_info(
-                &big,
-                &kinds(&["phone"]),
-                &[],
-            ));
+            assert!(!contains_sensitive_info(&big, &kinds(&["phone"]), &[],));
         }
 
         #[test]

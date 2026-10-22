@@ -121,8 +121,10 @@ pub fn save_setting(
                 .store(value == "true", Ordering::Relaxed);
         }
         "app.sound_paste_enabled" => {
+            // Previously this stored into `delete_after_paste` - toggling the
+            // paste sound silently corrupted the delete-after-paste flag.
             settings_state
-                .delete_after_paste
+                .sound_paste_enabled
                 .store(value != "false", Ordering::Relaxed);
         }
         "app.persistent" => {

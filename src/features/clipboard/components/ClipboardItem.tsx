@@ -1661,6 +1661,7 @@ export default memo(ClipboardItem, (prevProps, nextProps) => {
         prevProps.item.source_app_path === nextProps.item.source_app_path &&
         prevProps.item.is_pinned === nextProps.item.is_pinned &&
         prevProps.item.is_external === nextProps.item.is_external &&
+        prevProps.item.isInputting === nextProps.item.isInputting &&
         prevProps.item.file_preview_exists === nextProps.item.file_preview_exists &&
         prevProps.item.tags === nextProps.item.tags &&
         prevProps.quickPasteHint?.combo === nextProps.quickPasteHint?.combo &&
@@ -1674,6 +1675,12 @@ export default memo(ClipboardItem, (prevProps, nextProps) => {
         prevProps.compactMode === nextProps.compactMode &&
         prevProps.theme === nextProps.theme &&
         prevProps.language === nextProps.language &&
+        // These were missing from the comparator: a change to any of them left
+        // the item showing stale data (e.g. sensitive blur, pin overlay, tag
+        // colors, inputting spinner) until some other prop happened to change.
+        prevProps.isSensitiveHidden === nextProps.isSensitiveHidden &&
+        prevProps.windowPinned === nextProps.windowPinned &&
+        prevProps.tagColors === nextProps.tagColors &&
         prevProps.tagInput === nextProps.tagInput;
 });
 

@@ -195,7 +195,7 @@ pub fn delete_clipboard_entry(
 }
 
 #[tauri::command]
-pub fn clear_clipboard_history(
+pub async fn clear_clipboard_history(
     app_handle: AppHandle,
     state: State<'_, DbState>,
     session: State<'_, SessionHistory>,
@@ -205,8 +205,15 @@ pub fn clear_clipboard_history(
         let mut session_items = session.inner().0.lock().unwrap();
         session_items.retain(|item| item.is_pinned || !item.tags.is_empty());
     }
-    let data_dir = app_data.0.lock().unwrap();
-    state.repo.clear(Some(&data_dir)).map_err(AppError::from)?;
+    let data_dir = app_data.0.lock().unwrap().clone();
+    // `clear()` deletes row-by-row (cloud tombstones) and ends with VACUUM on
+    // a possibly multi-hundred-MB database - run it off the main thread so the
+    // UI does not freeze for seconds.
+    let repo = state.repo.clone();
+    tauri::async_runtime::spawn_blocking(move || repo.clear(Some(&data_dir)))
+        .await
+        .map_err(|e| AppError::Internal(format!("清空历史失败: {}", e)))?
+        .map_err(AppError::from)?;
     let _ = app_handle.emit("clipboard-changed", ());
     crate::services::cloud_sync::request_cloud_sync(app_handle);
     Ok(())

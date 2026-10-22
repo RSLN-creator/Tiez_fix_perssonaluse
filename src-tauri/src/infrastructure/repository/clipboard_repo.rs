@@ -97,7 +97,25 @@ pub struct SqliteClipboardRepository {
     sensitive_text_cache: Mutex<HashMap<i64, SensitiveCacheEntry>>,
 }
 
+impl Clone for SqliteClipboardRepository {
+    /// Manual impl: this toolchain's `std::sync::Mutex` is intentionally not
+    /// `Clone`, so the derived impl is unavailable. Clone the shared connection
+    /// handle and copy the (cheap, rebuildable) decrypt cache contents.
+    fn clone(&self) -> Self {
+        let cache = self
+            .sensitive_text_cache
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_default();
+        Self {
+            conn: self.conn.clone(),
+            sensitive_text_cache: Mutex::new(cache),
+        }
+    }
+}
+
 /// See [`SqliteClipboardRepository::sensitive_text_cache`].
+#[derive(Clone)]
 struct SensitiveCacheEntry {
     content_hash: i64,
     content_lower: String,
@@ -426,7 +444,10 @@ impl SqliteClipboardRepository {
         const CHUNK: usize = 400;
         let mut results = Vec::new();
         for chunk in ids.chunks(CHUNK) {
-            let placeholders = std::iter::repeat("?").take(chunk.len()).collect::<Vec<_>>().join(",");
+            let placeholders = std::iter::repeat("?")
+                .take(chunk.len())
+                .collect::<Vec<_>>()
+                .join(",");
             let sql_rows = format!(
                 "SELECT {cols} FROM clipboard_history ch WHERE ch.id IN ({placeholders})",
                 cols = ENTRY_COLUMNS,
@@ -444,10 +465,7 @@ impl SqliteClipboardRepository {
                 let entry = row.map_err(|e| e.to_string())?;
                 let hit = entry.content.to_lowercase().contains(term)
                     || entry.source_app.to_lowercase().contains(term)
-                    || entry
-                        .tags
-                        .iter()
-                        .any(|t| t.to_lowercase().contains(term));
+                    || entry.tags.iter().any(|t| t.to_lowercase().contains(term));
                 if hit {
                     results.push(entry);
                 }
@@ -575,13 +593,8 @@ impl SqliteClipboardRepository {
                     if seen.contains(id) {
                         continue;
                     }
-                    let (content_lower, app_lower, tags_lower) = self.sensitive_texts(
-                        *id,
-                        *hash,
-                        content_raw,
-                        source_app,
-                        tags_json,
-                    );
+                    let (content_lower, app_lower, tags_lower) =
+                        self.sensitive_texts(*id, *hash, content_raw, source_app, tags_json);
                     let hit = content_lower.contains(term)
                         || app_lower.contains(term)
                         || tags_lower.iter().any(|t| t.contains(term));
@@ -1338,8 +1351,8 @@ impl ClipboardRepository for SqliteClipboardRepository {
         // The trigram index cannot answer terms shorter than 3 characters (documented
         // FTS5 behaviour) and is empty until the one-time backfill completes; both
         // cases fall back to the linear scan.
-        let indexed = crate::database::is_fts_ready(&conn)
-            && crate::database::fts_term_is_usable(&term);
+        let indexed =
+            crate::database::is_fts_ready(&conn) && crate::database::fts_term_is_usable(&term);
 
         #[cfg(feature = "portable")]
         {
@@ -1653,7 +1666,9 @@ mod search_tests {
                 {
                     let mut stmt = conn.prepare(&sql2).expect("legacy2 prepare");
                     let rows = stmt
-                        .query_map(params![cursor_ts, cursor_id, 500], |row| repo.row_to_entry(row))
+                        .query_map(params![cursor_ts, cursor_id, 500], |row| {
+                            repo.row_to_entry(row)
+                        })
                         .expect("legacy2 query");
                     for row in rows.flatten() {
                         batch.push(row);
@@ -1793,9 +1808,22 @@ mod search_tests {
 
         // If the term were interpolated raw into MATCH these would raise an FTS5 syntax
         // error or silently change the query's meaning.
-        for term in ["AND", "OR NOT", "\"quoted\"", "a*", "(paren)", "col:x", "NEAR/2"] {
+        for term in [
+            "AND",
+            "OR NOT",
+            "\"quoted\"",
+            "a*",
+            "(paren)",
+            "col:x",
+            "NEAR/2",
+        ] {
             let res = repo.search(term, 50);
-            assert!(res.is_ok(), "term {:?} must not error: {:?}", term, res.err());
+            assert!(
+                res.is_ok(),
+                "term {:?} must not error: {:?}",
+                term,
+                res.err()
+            );
         }
 
         // A term containing a double quote must be treated literally, not as syntax.
@@ -1822,7 +1850,11 @@ mod search_tests {
             repo.encrypt_entry_with_conn(&conn, 2).expect("encrypt");
 
             let raw: String = conn
-                .query_row("SELECT content FROM clipboard_history WHERE id = 2", [], |r| r.get(0))
+                .query_row(
+                    "SELECT content FROM clipboard_history WHERE id = 2",
+                    [],
+                    |r| r.get(0),
+                )
                 .unwrap();
             assert!(
                 raw.starts_with(ENCRYPT_PREFIX),
@@ -1875,7 +1907,11 @@ mod search_tests {
             conn.execute_batch("PRAGMA mmap_size=268435456; PRAGMA cache_size=-16384;")
                 .expect("pragmas");
             let v: i32 = conn
-                .query_row("SELECT COALESCE(MAX(version),0) FROM schema_migrations", [], |r| r.get(0))
+                .query_row(
+                    "SELECT COALESCE(MAX(version),0) FROM schema_migrations",
+                    [],
+                    |r| r.get(0),
+                )
                 .unwrap_or(0);
             let n: i64 = conn
                 .query_row("SELECT COUNT(*) FROM clipboard_history", [], |r| r.get(0))
@@ -1905,7 +1941,11 @@ mod search_tests {
         {
             let conn = shared.lock().unwrap();
             let after: i32 = conn
-                .query_row("SELECT COALESCE(MAX(version),0) FROM schema_migrations", [], |r| r.get(0))
+                .query_row(
+                    "SELECT COALESCE(MAX(version),0) FROM schema_migrations",
+                    [],
+                    |r| r.get(0),
+                )
                 .unwrap();
             let fts: i64 = conn
                 .query_row(
@@ -1914,7 +1954,10 @@ mod search_tests {
                     |r| r.get(0),
                 )
                 .unwrap();
-            eprintln!("[REALDB] migration applied in {:.0} ms; version now {}; fts tables {}", migrate_ms, after, fts);
+            eprintln!(
+                "[REALDB] migration applied in {:.0} ms; version now {}; fts tables {}",
+                migrate_ms, after, fts
+            );
             assert!(after >= 10, "migration 10 must be recorded");
             assert!(fts >= 1, "clipboard_fts must exist");
         }
@@ -1957,7 +2000,14 @@ mod search_tests {
         // Median of N runs after a warm-up; single cold runs on a 650 MB database are
         // dominated by I/O noise.
         const REPS: usize = 5;
-        let terms = ["TieZ", "sqlite", "http", "clip", "的一个", "zzqqxx_not_found"];
+        let terms = [
+            "TieZ",
+            "sqlite",
+            "http",
+            "clip",
+            "的一个",
+            "zzqqxx_not_found",
+        ];
         for term in terms {
             let repo = SqliteClipboardRepository::new(shared.clone());
 

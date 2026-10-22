@@ -1839,7 +1839,7 @@ where
         if status_code == missing_status {
             return Ok(None);
         }
-        
+
         // 兼容坚果云：如果父目录不存在，GET 可能返回 409 Conflict (AncestorsNotFound)
         if status_code == 409 {
             return Ok(None);

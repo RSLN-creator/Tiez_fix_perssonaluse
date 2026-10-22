@@ -296,7 +296,10 @@ impl FtsBackfill {
                 |row| row.get(0),
             )?;
             // Clear anything the triggers already wrote so the rebuild is exact.
-            conn.execute("INSERT INTO clipboard_fts(clipboard_fts) VALUES ('delete-all')", [])?;
+            conn.execute(
+                "INSERT INTO clipboard_fts(clipboard_fts) VALUES ('delete-all')",
+                [],
+            )?;
             self.started = true;
         }
 

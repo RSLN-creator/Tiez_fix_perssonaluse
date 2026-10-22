@@ -242,63 +242,40 @@ pub fn enable_autostart_manually(app_name: &str, exe_path: &str) -> std::io::Res
 pub fn cleanup_old_install_folder(custom_path: Option<PathBuf>) {
     #[cfg(windows)]
     {
-        // Try to find and delete old installation folder
-        // Common installation paths
-        let mut possible_paths = vec![
-            std::env::var("LOCALAPPDATA")
-                .ok()
-                .map(|p| PathBuf::from(p).join("Programs").join("贴汁")),
-            std::env::var("ProgramFiles")
-                .ok()
-                .map(|p| PathBuf::from(p).join("贴汁")),
-            std::env::var("ProgramFiles(x86)")
-                .ok()
-                .map(|p| PathBuf::from(p).join("贴汁")),
-            // Also check direct local appdata just in case
-            std::env::var("LOCALAPPDATA")
-                .ok()
-                .map(|p| PathBuf::from(p).join("贴汁")),
-        ];
-
-        // Add custom path from registry if found
-        if let Some(path) = custom_path {
+        // Safety: only delete a directory that (a) the registry itself reported
+        // as the old app's InstallLocation AND (b) still contains the old app
+        // binary. Never delete folders located by name-guessing under
+        // ProgramFiles / LOCALAPPDATA - a name match alone can hit unrelated
+        // user data.
+        let Some(path) = custom_path else { return };
+        let looks_like_old_install =
+            path.join("贴汁.exe").exists() || path.join("tiez.exe").exists();
+        if !looks_like_old_install {
             println!(
-                ">>> [CLEANUP] Adding custom path from registry to cleanup list: {:?}",
+                ">>> [CLEANUP] Registry InstallLocation {:?} has no old app binary; skipping.",
                 path
             );
-            possible_paths.push(Some(path));
+            return;
         }
-
-        for path_opt in possible_paths.iter() {
-            if let Some(path) = path_opt {
-                println!(">>> [CLEANUP] Checking installation path: {:?}", path);
-                if path.exists() && path.is_dir() {
-                    // Safety check: Don't delete if it's the current running dir (unlikely due to rename, but good practice)
-                    if let Ok(current_exe) = std::env::current_exe() {
-                        if let Some(current_dir) = current_exe.parent() {
-                            if path == current_dir {
-                                println!(
-                                    ">>> [CLEANUP] Skipping current directory safety check: {:?}",
-                                    path
-                                );
-                                continue;
-                            }
-                        }
-                    }
-
-                    println!(">>> [CLEANUP] Found old installation folder: {:?}", path);
-                    // Try to delete - this might fail if files are in use
-                    match fs::remove_dir_all(path) {
-                        Ok(_) => {
-                            println!(">>> [CLEANUP] Successfully deleted old installation folder")
-                        }
-                        Err(e) => println!(
-                            ">>> [CLEANUP] Could not delete old installation folder: {}",
-                            e
-                        ),
-                    }
+        if let Ok(current_exe) = std::env::current_exe() {
+            if let Some(current_dir) = current_exe.parent() {
+                if path == current_dir {
+                    println!(
+                        ">>> [CLEANUP] Skipping current directory safety check: {:?}",
+                        path
+                    );
+                    return;
                 }
             }
+        }
+
+        println!(">>> [CLEANUP] Found old installation folder: {:?}", path);
+        match fs::remove_dir_all(&path) {
+            Ok(_) => println!(">>> [CLEANUP] Successfully deleted old installation folder"),
+            Err(e) => println!(
+                ">>> [CLEANUP] Could not delete old installation folder: {}",
+                e
+            ),
         }
     }
 }

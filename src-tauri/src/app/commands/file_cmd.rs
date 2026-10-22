@@ -1,7 +1,6 @@
 use crate::app_state::AppDataDir;
 use crate::error::{AppError, AppResult};
 use base64::Engine;
-use image::ImageFormat;
 use reqwest::header;
 use serde::Serialize;
 use std::collections::hash_map::DefaultHasher;
@@ -47,16 +46,7 @@ pub(crate) fn image_ext_from_filename(name: &str) -> Option<&'static str> {
     normalize_image_ext(ext)
 }
 
-pub(crate) fn image_ext_from_bytes(bytes: &[u8]) -> Option<&'static str> {
-    let format = image::guess_format(bytes).ok()?;
-    match format {
-        ImageFormat::Png => Some("png"),
-        ImageFormat::Jpeg => Some("jpg"),
-        ImageFormat::Gif => Some("gif"),
-        ImageFormat::WebP => Some("webp"),
-        _ => None,
-    }
-}
+pub(crate) use crate::infrastructure::image_ext_from_bytes;
 
 pub(crate) fn image_ext_from_mime(mime: &str) -> Option<&'static str> {
     match mime {

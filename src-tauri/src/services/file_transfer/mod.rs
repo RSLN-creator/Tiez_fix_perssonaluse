@@ -312,7 +312,10 @@ pub async fn run_server(listener: tokio::net::TcpListener, app_handle: AppHandle
             get(handlers::handle_file_download_proxy),
         )
         .with_state(state)
-        .layer(DefaultBodyLimit::disable());
+        // Bounded request bodies: the LAN server accepts up to 256 MB per
+        // request. Disabling the limit allowed remote clients to fill the
+        // disk unconstrained.
+        .layer(DefaultBodyLimit::max(256 * 1024 * 1024));
 
     if let Err(e) = axum::serve(listener, app).await {
         eprintln!("Server error: {}", e);
@@ -462,11 +465,7 @@ pub async fn register_received_file(
                 }
             }
         } else {
-            let id = -(SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_micros() as i64
-                / 1000);
+            let id = crate::services::next_session_id();
             let mut entry_mem = entry;
             entry_mem.id = id;
             if let Ok(mut session) = session_hist.0.lock() {

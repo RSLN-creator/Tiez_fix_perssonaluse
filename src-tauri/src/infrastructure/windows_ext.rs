@@ -6,10 +6,10 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_RWIN, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    BringWindowToTop, CallNextHookEx, GA_ROOT, GetAncestor, GetForegroundWindow, GetWindowRect,
-    GetWindowThreadProcessId, IsIconic, IsWindowVisible, LLMHF_INJECTED, MessageBoxW,
-    MSLLHOOKSTRUCT, PostMessageW, SetForegroundWindow, SetWindowPos, SetWindowsHookExW,
-    ShowWindow, WindowFromPoint, HWND_TOPMOST, MB_ICONERROR, MB_OK, SWP_NOACTIVATE, SWP_NOMOVE,
+    BringWindowToTop, CallNextHookEx, GetAncestor, GetForegroundWindow, GetWindowRect,
+    GetWindowThreadProcessId, IsIconic, IsWindowVisible, MessageBoxW, PostMessageW,
+    SetForegroundWindow, SetWindowPos, SetWindowsHookExW, ShowWindow, WindowFromPoint, GA_ROOT,
+    HWND_TOPMOST, LLMHF_INJECTED, MB_ICONERROR, MB_OK, MSLLHOOKSTRUCT, SWP_NOACTIVATE, SWP_NOMOVE,
     SWP_NOSIZE, SWP_SHOWWINDOW, SW_RESTORE, SW_SHOWNA, WH_MOUSE_LL, WM_MOUSEWHEEL,
 };
 
@@ -204,8 +204,8 @@ unsafe extern "system" fn wheel_ll_proc(n_code: i32, w_param: WPARAM, l_param: L
                     mods |= 0x4; // MK_SHIFT
                 }
                 // lParam：屏幕坐标，x 低位 / y 高位（i16 保位，兼容负坐标显示器）
-                let l_fwd = ((info.pt.y as i16 as u16 as usize) << 16)
-                    | info.pt.x as i16 as u16 as usize;
+                let l_fwd =
+                    ((info.pt.y as i16 as u16 as usize) << 16) | info.pt.x as i16 as u16 as usize;
                 let _ = PostMessageW(
                     Some(hit),
                     WM_MOUSEWHEEL,

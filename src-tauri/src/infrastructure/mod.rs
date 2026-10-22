@@ -87,3 +87,17 @@ pub mod windows_api {
         pub fn register_emoji_drag_drop(_app_handle: tauri::AppHandle) {}
     }
 }
+
+/// Detects the image format of raw bytes and returns a canonical lowercase
+/// extension. Single shared implementation - previously duplicated in
+/// `database`, `app/commands/file_cmd` and `services/clipboard/utils`.
+pub fn image_ext_from_bytes(bytes: &[u8]) -> Option<&'static str> {
+    match image::guess_format(bytes).ok()? {
+        image::ImageFormat::Png => Some("png"),
+        image::ImageFormat::Jpeg => Some("jpg"),
+        image::ImageFormat::Gif => Some("gif"),
+        image::ImageFormat::WebP => Some("webp"),
+        image::ImageFormat::Bmp => Some("bmp"),
+        _ => None,
+    }
+}

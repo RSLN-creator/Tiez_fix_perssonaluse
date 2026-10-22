@@ -68,7 +68,10 @@ pub async fn poll_messages(
                         && !m.content.starts_with("data:")
                         && !m.content.starts_with("/download/")
                     {
-                        let token = format!("temp_{}", m.id);
+                        // Random, unguessable download token: the previous
+                        // `temp_{id}` scheme let any LAN client enumerate and
+                        // download every shared image.
+                        let token = uuid::Uuid::new_v4().simple().to_string();
                         let mut filename = "image.png".to_string();
                         let path = std::path::Path::new(&m.content);
                         if let Some(name) = path.file_name() {
@@ -255,11 +258,7 @@ pub async fn handle_text(
                 )))
             })
         } else {
-            let id = -(SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_micros() as i64
-                / 1000);
+            let id = crate::services::next_session_id();
             let entry = ClipboardEntry {
                 id,
                 content_type: "text".to_string(),
@@ -329,7 +328,15 @@ pub async fn upload(
         }
 
         if name == "file" {
-            let file_name = field.file_name().unwrap_or("unknown.txt").to_string();
+            let raw_file_name = field.file_name().unwrap_or("unknown.txt").to_string();
+            // The multipart filename is untrusted network input. Keep only the
+            // final path component so it can never escape `save_dir` (Windows
+            // also lets an absolute path replace the prefix entirely).
+            let file_name = std::path::Path::new(&raw_file_name)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .filter(|n| !n.is_empty() && !n.starts_with('.'))
+                .unwrap_or_else(|| "unknown.txt".to_string());
             let content_type = field
                 .content_type()
                 .unwrap_or("application/octet-stream")
@@ -448,7 +455,15 @@ pub async fn upload_chunk(
                 if !path.exists() {
                     let _ = std::fs::create_dir_all(&path);
                 }
-                path.join(format!(".tmp_{}", meta.upload_id))
+                // upload_id arrives from the network; treat it as opaque and
+                // strip anything that could traverse out of the download dir
+                // when joined into a path.
+                let safe_upload_id: String = meta
+                    .upload_id
+                    .chars()
+                    .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+                    .collect();
+                path.join(format!(".tmp_{}", safe_upload_id))
             })
             .clone()
     };
@@ -466,10 +481,17 @@ pub async fn upload_chunk(
     }
 
     if meta.chunk_index == meta.total_chunks - 1 {
+        // Same sanitization as the multipart upload path: keep only the final
+        // path component of the client-supplied file name.
+        let safe_name = std::path::Path::new(&meta.file_name)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .filter(|n| !n.is_empty() && !n.starts_with('.'))
+            .unwrap_or_else(|| "unknown.txt".to_string());
         let final_filename = format!(
             "{}_{}",
             chrono::Utc::now().format("%Y%m%d%H%M%S"),
-            meta.file_name
+            safe_name
         );
         let final_path = temp_path.parent().unwrap().join(&final_filename);
 

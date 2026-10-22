@@ -176,11 +176,33 @@ async fn handle_url_content(app_path: &Option<String>, content: &str) -> Result<
 async fn launch_default_handler(content: &str) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
-        let mut cmd = Command::new("cmd");
-        cmd.args(["/C", "start", "", content])
-            .creation_flags(0x08000000);
-        cmd.spawn()
-            .map_err(|e| AppError::Internal(format!("启动默认浏览器失败: {}", e)))?;
+        // ShellExecuteW treats `content` as a verb target, never as a shell
+        // command line: `cmd /C start "" <content>` let clipboard-crafted
+        // metacharacters (&, |, ^, %VAR%) execute arbitrary commands.
+        use windows::core::{HSTRING, PCWSTR};
+        use windows::Win32::UI::Shell::ShellExecuteW;
+        use windows::Win32::UI::WindowsAndMessaging::SW_SHOW;
+
+        let operation = HSTRING::from("open");
+        let target = HSTRING::from(content);
+
+        let ret = unsafe {
+            ShellExecuteW(
+                None,
+                PCWSTR::from_raw(operation.as_ptr()),
+                PCWSTR::from_raw(target.as_ptr()),
+                None,
+                None,
+                SW_SHOW,
+            )
+        };
+
+        if (ret.0 as isize) <= 32 {
+            return Err(AppError::Internal(format!(
+                "启动默认浏览器失败 (ShellExecute error code: {})",
+                ret.0 as isize
+            )));
+        }
     }
 
     #[cfg(not(target_os = "windows"))]

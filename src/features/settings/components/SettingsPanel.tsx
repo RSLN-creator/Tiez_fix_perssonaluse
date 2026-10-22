@@ -26,6 +26,41 @@ import SettingsFooter from "./SettingsFooter";
 import { CLOUD_SYNC_ENABLED } from "../../../shared/config/edition";
 import type { QuickPasteModifier } from "../../app/types";
 
+interface LabelWithHintInnerProps {
+    label: string;
+    hint?: string | React.ReactNode;
+    hintKey: string;
+    open: boolean;
+    onToggle: (key: string) => void;
+}
+
+// Module-scope so the component type is stable across renders. It used to be
+// defined inside SettingsPanel's render: a new type every render unmounted and
+// remounted every settings group subtree that received it as a prop.
+const LabelWithHintInner = ({ label, hint, hintKey, open, onToggle }: LabelWithHintInnerProps) => (
+    <div className="item-label-group">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span className="item-label">{label}</span>
+            {hint && (
+                <button
+                    type="button"
+                    className="hint-icon-btn"
+                    title={typeof hint === 'string' ? hint : undefined}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onToggle(hintKey);
+                    }}
+                >
+                    <HelpCircle size={12} />
+                </button>
+            )}
+        </div>
+        {hint && open && (
+            typeof hint === 'string' ? <span className="hint">{hint}</span> : hint
+        )}
+    </div>
+);
+
 const SETTINGS_DEBUG = import.meta.env.DEV;
 const settingsLog = (...args: unknown[]) => {
     if (!SETTINGS_DEBUG) return;
@@ -327,37 +362,28 @@ const SettingsPanel = (props: SettingsPanelProps) => {
         }
     };
 
-    const toggleHint = (key: string) => {
+    const toggleHint = useCallback((key: string) => {
         setOpenHints(prev => {
             const next = new Set(prev);
             if (next.has(key)) next.delete(key);
             else next.add(key);
             return next;
         });
-    };
+    }, []);
 
-    const LabelWithHint = ({ label, hint, hintKey }: { label: string; hint?: string | React.ReactNode; hintKey: string }) => (
-        <div className="item-label-group">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span className="item-label">{label}</span>
-                {hint && (
-                    <button
-                        type="button"
-                        className="hint-icon-btn"
-                        title={typeof hint === 'string' ? hint : undefined}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            toggleHint(hintKey);
-                        }}
-                    >
-                        <HelpCircle size={12} />
-                    </button>
-                )}
-            </div>
-            {hint && openHints.has(hintKey) && (
-                typeof hint === 'string' ? <span className="hint">{hint}</span> : hint
-            )}
-        </div>
+    // Wrapper with the group components' expected prop signature. Its identity
+    // only changes when a hint actually opens/closes - not on every render.
+    const LabelWithHint = useCallback(
+        ({ label, hint, hintKey }: { label: string; hint?: string | React.ReactNode; hintKey: string }) => (
+            <LabelWithHintInner
+                label={label}
+                hint={hint}
+                hintKey={hintKey}
+                open={openHints.has(hintKey)}
+                onToggle={toggleHint}
+            />
+        ),
+        [openHints, toggleHint]
     );
 
     const checkModelStatus = async (profile: AiProfile) => {

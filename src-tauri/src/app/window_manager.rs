@@ -489,7 +489,7 @@ mod tests {
     use super::{remap_fixed_window_position, MonitorBounds};
 
     #[test]
-    fn keeps_bottom_right_anchor_when_switching_monitors() {
+    fn maps_top_left_offset_proportionally_across_monitors() {
         let source = MonitorBounds {
             x: 0,
             y: 0,
@@ -505,7 +505,7 @@ mod tests {
 
         let mapped = remap_fixed_window_position((1610, 670), (300, 400), source, target);
 
-        assert_eq!(mapped, (4180, 1040));
+        assert_eq!(mapped, (4166, 1025));
     }
 
     #[test]
@@ -525,7 +525,7 @@ mod tests {
 
         let mapped = remap_fixed_window_position((810, 340), (300, 400), source, target);
 
-        assert_eq!(mapped, (-800, 250));
+        assert_eq!(mapped, (-950, 250));
     }
 
     #[test]

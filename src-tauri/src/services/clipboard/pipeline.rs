@@ -527,11 +527,7 @@ impl PipelineStage for PersistenceStage {
             }
 
             // Use a unique negative ID for new session-only items
-            let id = -(SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_micros() as i64
-                / 1000);
+            let id = crate::services::next_session_id();
             entry.id = id;
             let session_history = ctx.app_handle.state::<SessionHistory>();
             let mut session = session_history.0.lock().unwrap();

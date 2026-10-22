@@ -414,19 +414,37 @@ pub unsafe fn get_clipboard_files() -> Option<Vec<String>> {
         // offset 0: pFiles (DWORD)
         // offset 16: fWide (BOOL)
         let p_base = p_drop as *const u8;
-        let p_files_val = *(p_base as *const u32);
+        // Bound every access by the real allocation size: the payload is owned
+        // by the process that put it on the clipboard, so a malformed HDROP
+        // must not cause out-of-bounds reads.
+        let total_size = GlobalSize(h_global) as usize;
+        if total_size < 20 {
+            return None;
+        }
+        let p_files_val = *(p_base as *const u32) as usize;
         let f_wide = *(p_base.add(16) as *const i32);
+        if p_files_val >= total_size {
+            return None;
+        }
 
         let mut files = Vec::new();
-        let files_start = p_base.add(p_files_val as usize);
+        let files_start = p_base.add(p_files_val);
+        let budget = total_size - p_files_val;
 
         if f_wide != 0 {
             // Unicode (UTF-16)
             let mut ptr = files_start as *const u16;
+            let mut consumed = 0usize;
             loop {
+                if consumed + 2 > budget {
+                    break;
+                }
                 let mut len = 0;
-                while *ptr.add(len) != 0 {
+                while consumed + (len + 1) * 2 <= budget && unsafe { *ptr.add(len) != 0 } {
                     len += 1;
+                }
+                if consumed + (len + 1) * 2 > budget {
+                    break; // unterminated string at the end of the buffer
                 }
                 if len == 0 {
                     break;
@@ -436,15 +454,24 @@ pub unsafe fn get_clipboard_files() -> Option<Vec<String>> {
                 if let Ok(path) = String::from_utf16(slice) {
                     files.push(path);
                 }
+                let step = (len + 1) * 2;
                 ptr = ptr.add(len + 1);
+                consumed += step;
             }
         } else {
             // ANSI - Basic ASCII support as fallback
             let mut ptr = files_start as *const u8;
+            let mut consumed = 0usize;
             loop {
+                if consumed + 1 > budget {
+                    break;
+                }
                 let mut len = 0;
-                while *ptr.add(len) != 0 {
+                while consumed + len + 1 <= budget && unsafe { *ptr.add(len) != 0 } {
                     len += 1;
+                }
+                if consumed + len + 1 > budget {
+                    break; // unterminated string at the end of the buffer
                 }
                 if len == 0 {
                     break;
@@ -455,6 +482,7 @@ pub unsafe fn get_clipboard_files() -> Option<Vec<String>> {
                     files.push(path.to_string());
                 }
                 ptr = ptr.add(len + 1);
+                consumed += len + 1;
             }
         }
 

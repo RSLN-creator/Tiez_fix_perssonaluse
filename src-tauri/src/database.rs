@@ -198,8 +198,7 @@ pub fn spawn_fts_backfill(conn: Arc<Mutex<Connection>>) {
             }
         }
 
-        let mut backfill =
-            crate::infrastructure::repository::migrations::FtsBackfill::new();
+        let mut backfill = crate::infrastructure::repository::migrations::FtsBackfill::new();
         // Each batch is indexed while holding the shared connection lock, so the batch
         // size bounds how long clipboard capture can be stalled. On the reference
         // 473 MB / 25k-row database the whole rebuild takes ~60 s, i.e. ~1.2 s per
@@ -269,14 +268,7 @@ fn image_ext_from_data_url_header(header: &str) -> Option<&'static str> {
 }
 
 fn image_ext_from_bytes(bytes: &[u8]) -> Option<&'static str> {
-    match image::guess_format(bytes).ok()? {
-        image::ImageFormat::Png => Some("png"),
-        image::ImageFormat::Jpeg => Some("jpg"),
-        image::ImageFormat::Gif => Some("gif"),
-        image::ImageFormat::WebP => Some("webp"),
-        image::ImageFormat::Bmp => Some("bmp"),
-        _ => None,
-    }
+    crate::infrastructure::image_ext_from_bytes(bytes)
 }
 
 pub fn save_image_to_file(data_url: &str, data_dir: &std::path::Path) -> Option<String> {
