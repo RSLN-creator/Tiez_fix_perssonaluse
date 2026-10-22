@@ -88,7 +88,10 @@ body.theme-mica {
 body.theme-mica::before {
   content: "";
   position: absolute;
-  inset: -1px;
+  /* Exactly match #root's outer rounded box: the custom background must reach
+     the window edge with the same radius as the shell clip, otherwise the two
+     arcs interleave and leave visible wedges at every corner. */
+  inset: 0;
   background-image: var(--custom-bg-image, none);
   background-size: cover;
   background-position: center;
@@ -96,7 +99,7 @@ body.theme-mica::before {
   z-index: 0;
   opacity: 0.18;
   pointer-events: none;
-  border-radius: calc(var(--shell-radius) + 1px);
+  border-radius: var(--shell-radius);
 }
 
 body.has-custom-bg.theme-mica::before {

@@ -9,6 +9,11 @@ pub struct SettingsState {
     pub persistent: AtomicBool,
     pub file_server_auto_close: AtomicBool,
     pub theme: Mutex<String>,
+    /// True while a custom background image is active on a theme that supports it.
+    /// The CSS shell then owns the window's corner rounding exclusively; the native
+    /// DWM rounding and backdrop are disabled so the painted background and the
+    /// window silhouette share exactly one corner radius.
+    pub custom_background_active: AtomicBool,
     pub capture_files: AtomicBool,
     pub capture_rich_text: AtomicBool,
     pub auto_copy_file: AtomicBool,
@@ -25,6 +30,7 @@ pub struct SettingsState {
     pub search_hotkey: Mutex<String>,
     pub quick_paste_modifier: Mutex<String>,
     pub sound_enabled: AtomicBool,
+    pub sound_paste_enabled: AtomicBool,
     pub hide_tray_icon: AtomicBool,
     pub edge_docking: AtomicBool,
     pub follow_mouse: AtomicBool,

@@ -147,3 +147,70 @@ $a.Contains('assets/index-')     # 必须为 True
 - 若 TieZ 主线程长时间卡顿，Windows 可能静默摘除低级钩子（修复失效但不影响稳定性），
   重启 TieZ 恢复。
 - 窗口边缘纯透明区域的滚轮现在会被 TieZ 消费（此前穿透给底层应用）。
+
+---
+
+## 补丁五：自定义背景四角留白/圆弧交错（2026-10-17）
+
+### 现象
+
+主题为 `mica`/`acrylic` 且设置了自定义背景图时，窗口四角出现大小不一致的
+交叠圆弧与浅色方块，背景图无法与窗口完美贴合。
+
+### 根因（实测定位）
+
+角部同时存在 **三个互不相同的圆角来源**：
+
+1. CSS 壳层 `#root` 用 `--shell-radius`（mica 为 10 逻辑 px）裁切；
+2. 自定义背景层 `body::before` 原来用 `inset: -1px` + `calc(--shell-radius + 1px)`，
+   与壳层差 1px、圆角半径差 1px → 四角出现一圈"背景图露边"的细弧；
+3. Rust 端强制 `DWMWCP_ROUND`，DWM 以系统固定的约 8 物理 px 半径裁切窗口，
+   而 mica 背景板按**窗口矩形**绘制 → 在 DWM 弧与 CSS 弧之间露出浅色
+   （背景板/桌面）楔形块，即用户看到的"空白圆弧与方块"。
+
+三个半径互相交错，任何单层修正都无法对齐。
+
+### 方案：单一圆角来源
+
+- CSS：`body::before` 改为 `inset: 0` 且 `border-radius: var(--shell-radius)`，
+  与 `#root` 外壳完全重合（`themes/mica.css`、`themes/acrylic.css`）。
+- Rust：新增 `set_custom_background_state` 命令。当前端启用了自定义背景时
+  （`useCustomBackground` 通知后端），`set_theme` 路径改为：
+  清除 DWM 背景板、`DWMWCP_DONOTROUND`、关闭系统阴影——由 CSS 壳层独占
+  圆角，背景图、壳层与窗口轮廓共享同一条弧。
+- 未启用自定义背景时行为不变（保留原生 mica/acrylic 与 DWM 圆角）。
+
+### 验证
+
+以 150% DPI、700×500 窗口 + 品红测试图实测：修复前四角存在
+「桌面 / 浅色背景板楔形 / 壳层」三层交错；修复后四角为单一平滑弧，
+背景图一直延伸到窗口边缘（详见 `docs/CODE-REVIEW-FINDINGS.md`）。
+
+### 改动文件
+
+| 文件 | 改动 |
+|---|---|
+| `styles/themes/mica.css` / `acrylic.css` | 背景层对齐壳层圆角 |
+| `shared/hooks/useCustomBackground.ts` | 通知后端自定义背景状态 |
+| `app/commands/ui_cmd.rs` | `set_custom_background_state` + 视觉应用重构 |
+| `app_state.rs` / `app/setup.rs` / `main.rs` | 新状态位与命令注册 |
+
+---
+
+## 补丁六：安全与质量批量修复（2026-10-17）
+
+全量代码审查记录见 `docs/CODE-REVIEW-FINDINGS.md` 与 `docs/review/`。
+本批实现的安全/正确性/性能修复：
+
+| 类别 | 修复 |
+|---|---|
+| 安全 | LAN 文件传输：文件名/upload_id 消毒（防路径穿越）、下载 token 改为 UUID、请求体限 256MB（`file_transfer/handlers.rs`、`mod.rs`） |
+| 安全 | URL 打开改用 `ShellExecuteW`，消除 `cmd /C start` 剪贴板内容命令注入（`content_handler.rs`） |
+| 安全 | CF_HDROP 解析按 `GlobalSize` 限界，杜绝畸形剪贴板载荷越界读（`win_clipboard.rs`） |
+| 安全 | 旧版残留清理仅删除注册表证实且含旧程序二进制目录，不再按名字猜删（`migration.rs`） |
+| 正确性 | `app.sound_paste_enabled` 此前写入 `delete_after_paste` 状态位（`settings_cmd.rs`） |
+| 正确性 | 会话条目负 ID 改为单调生成器，修复同毫秒冲突（`services/mod.rs` 等 3 处） |
+| 架构 | `image_ext_from_bytes` 三份重复收敛到 `infrastructure`，同时消除 infrastructure→commands 反向依赖 |
+| 性能 | `clear_clipboard_history` 的 VACUUM 移到后台线程（`history_cmd.rs`） |
+| 性能 | 前端：修复 `memo(ClipboardItem)` 比较器缺项；`LabelWithHint` 提升到模块级避免设置组反复重挂载 |
+| 测试 | 修正 `window_manager` 两个与实现不符的单元测试期望值（此前 73 通过 / 2 失败） |

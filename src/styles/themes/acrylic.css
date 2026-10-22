@@ -90,7 +90,8 @@ body.theme-acrylic {
 body.theme-acrylic::before {
   content: "";
   position: absolute;
-  inset: -1px;
+  /* Exactly match #root's outer rounded box (see mica.css for rationale). */
+  inset: 0;
   background-image: var(--custom-bg-image, none);
   background-size: cover;
   background-position: center;
@@ -98,7 +99,7 @@ body.theme-acrylic::before {
   z-index: 0;
   opacity: 0.18;
   pointer-events: none;
-  border-radius: calc(var(--shell-radius) + 1px);
+  border-radius: var(--shell-radius);
 }
 
 body.has-custom-bg.theme-acrylic::before {

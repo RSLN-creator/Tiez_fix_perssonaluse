@@ -84,10 +84,7 @@ fn install_startup_watchdog() {
         let _ = std::fs::write(std::env::temp_dir().join(STARTUP_TIMEOUT_LOG), &msg);
 
         #[cfg(windows)]
-        crate::infrastructure::windows_ext::WindowExt::show_error_box(
-            "TieZ 启动超时",
-            &msg,
-        );
+        crate::infrastructure::windows_ext::WindowExt::show_error_box("TieZ 启动超时", &msg);
     });
 }
 
@@ -216,6 +213,7 @@ fn main() {
             app::commands::quit,
             app::commands::relaunch,
             app::commands::set_theme,
+            app::commands::set_custom_background_state,
             app::commands::get_platform_info,
             app::commands::send_system_notification,
             app::commands::register_hotkey,
