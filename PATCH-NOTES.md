@@ -150,7 +150,7 @@ $a.Contains('assets/index-')     # 必须为 True
 
 ---
 
-## 补丁五：自定义背景四角留白/圆弧交错（2026-10-17）
+## 补丁五：自定义背景四角留白/圆弧交错（2026-10-17，2026-10-23 重做）
 
 ### 现象
 
@@ -159,44 +159,64 @@ $a.Contains('assets/index-')     # 必须为 True
 
 ### 根因（实测定位）
 
-角部同时存在 **三个互不相同的圆角来源**：
+角部同时存在 **两个互不相同的圆角来源**：
 
-1. CSS 壳层 `#root` 用 `--shell-radius`（mica 为 10 逻辑 px）裁切；
-2. 自定义背景层 `body::before` 原来用 `inset: -1px` + `calc(--shell-radius + 1px)`，
-   与壳层差 1px、圆角半径差 1px → 四角出现一圈"背景图露边"的细弧；
-3. Rust 端强制 `DWMWCP_ROUND`，DWM 以系统固定的约 8 物理 px 半径裁切窗口，
-   而 mica 背景板按**窗口矩形**绘制 → 在 DWM 弧与 CSS 弧之间露出浅色
-   （背景板/桌面）楔形块，即用户看到的"空白圆弧与方块"。
+1. CSS 壳层 `#root` 用 `--shell-radius`（mica 为 10 逻辑 px）裁切，同时
+   `base.css` 给 `html`、`body` 也加了同样的 `border-radius` + `overflow: hidden`；
+2. Windows 11 的 DWM 以系统固定半径（约 8 物理 px）裁切窗口轮廓，而 mica/acrylic
+   背景板按**窗口矩形**整块绘制。
 
-三个半径互相交错，任何单层修正都无法对齐。
+CSS 的弧比 DWM 的弧更大，两条弧之间的那条夹缝**谁都盖不到**：露出的是原生背景板，
+于是四角各出现一块浅色楔形/方块，背景图也永远到不了窗口边缘。
 
-### 方案：单一圆角来源
+### 方案：单一圆角来源（纯 CSS）
 
-- CSS：`body::before` 改为 `inset: 0` 且 `border-radius: var(--shell-radius)`，
-  与 `#root` 外壳完全重合（`themes/mica.css`、`themes/acrylic.css`）。
-- Rust：新增 `set_custom_background_state` 命令。当前端启用了自定义背景时
-  （`useCustomBackground` 通知后端），`set_theme` 路径改为：
-  清除 DWM 背景板、`DWMWCP_DONOTROUND`、关闭系统阴影——由 CSS 壳层独占
-  圆角，背景图、壳层与窗口轮廓共享同一条弧。
-- 未启用自定义背景时行为不变（保留原生 mica/acrylic 与 DWM 圆角）。
+自定义背景生效时，把 CSS 一侧的圆角全部收平，让 DWM 成为唯一的圆角来源：
+
+```css
+body.has-custom-bg.windows-11.theme-mica #root,
+body.has-custom-bg.windows-11.theme-mica::before,
+html.has-custom-bg.windows-11.theme-mica,
+html.has-custom-bg.windows-11.theme-mica > body... { border-radius: 0; }
+```
+
+`html` 与 `body` 必须一起收平 —— `base.css` 给两者都设了圆角 + `overflow: hidden`，
+只改其一仍会被另一个裁回旧弧。未启用自定义背景时不改动，原生 mica/acrylic 行为不变
+（此时夹缝两侧同色，本来就看不出来）。
+
+### 为什么不用之前那版后端方案
+
+上一版曾新增 `set_custom_background_state` 命令，在启用自定义背景时切
+`DWMWCP_DONOTROUND` 并关闭 DWM 背景板/阴影。实测有两个缺陷，已全部回退：
+
+1. **`window_vibrancy::clear_vibrancy` 在 Windows 上是空操作**——该函数只实现
+   macOS（`window-vibrancy/src/lib.rs` 的 `clear_vibrancy` 仅匹配 `AppKit`），
+   所谓的"清除 DWM 背景板"根本没发生；
+2. 更严重的是 `set_shadow()` / DWM 属性调用会经
+   `tauri-runtime-wry` 的 `send_user_message` 回到 tao 事件循环，在
+   `setup`/命令回调中同步触发属于**重入**，引发了启动期 panic 与窗口纯白。
+   `tauri::command` 默认在主线程同步执行，正是这条路径。
+
+纯 CSS 方案没有跨线程/重入风险，行为确定且可像素级验证，因此最终采用。
 
 ### 验证
 
-以 150% DPI、700×500 窗口 + 品红测试图实测：修复前四角存在
-「桌面 / 浅色背景板楔形 / 壳层」三层交错；修复后四角为单一平滑弧，
-背景图一直延伸到窗口边缘（详见 `docs/CODE-REVIEW-FINDINGS.md`）。
+同进程、同数据、同 DPI 内做受控 A/B（CDP 注入旧圆角几何再移除）：
+
+- 修复前：`html/body/#root` = `10px`、背景层 = `11px` → 四角各见一块白色楔形；
+- 修复后：四者均为 `0px`，四角干净，背景图铺满到窗口边缘。
+
+另外确认真实中文路径背景（`美术与绘画艺术.library/...`，2800×1260）经 asset
+协议可正常加载并渲染。
 
 ### 改动文件
 
 | 文件 | 改动 |
 |---|---|
-| `styles/themes/mica.css` / `acrylic.css` | 背景层对齐壳层圆角 |
-| `shared/hooks/useCustomBackground.ts` | 通知后端自定义背景状态 |
-| `app/commands/ui_cmd.rs` | `set_custom_background_state` + 视觉应用重构 |
-| `app_state.rs` / `app/setup.rs` / `main.rs` | 新状态位与命令注册 |
+| `styles/themes/mica.css` / `acrylic.css` | 自定义背景 + Win11 时收平 CSS 圆角 |
+| `shared/hooks/useCustomBackground.ts` | 同时给 `<html>` 打 `has-custom-bg` 标记 |
 
 ---
-
 ## 补丁六：安全与质量批量修复（2026-10-17）
 
 全量代码审查记录见 `docs/CODE-REVIEW-FINDINGS.md` 与 `docs/review/`。

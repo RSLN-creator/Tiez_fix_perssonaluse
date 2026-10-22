@@ -106,6 +106,15 @@ body.has-custom-bg.theme-acrylic::before {
   opacity: var(--custom-bg-opacity, 0.45);
 }
 
+/* See the matching rule in mica.css: with a custom background the window must
+   show exactly one corner arc, and on Windows 11 that arc is DWM's. */
+html.has-custom-bg.windows-11.theme-acrylic,
+html.has-custom-bg.windows-11.theme-acrylic > body.has-custom-bg.windows-11.theme-acrylic,
+body.has-custom-bg.windows-11.theme-acrylic::before,
+body.has-custom-bg.windows-11.theme-acrylic #root {
+  border-radius: 0;
+}
+
 body.theme-acrylic:not(.has-custom-bg)::before {
   background-image:
     radial-gradient(120% 120% at 8% 8%, rgba(255, 255, 255, 0.32) 0%, rgba(255, 255, 255, 0.08) 52%, rgba(255, 255, 255, 0.02) 100%),

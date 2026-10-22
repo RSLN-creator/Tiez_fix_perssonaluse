@@ -362,7 +362,6 @@ fn setup_state(
         persistent: AtomicBool::new(s.persistent),
         file_server_auto_close: AtomicBool::new(s.auto_close_server),
         theme: std::sync::Mutex::new(s.theme.clone()),
-        custom_background_active: AtomicBool::new(false),
         capture_files: AtomicBool::new(s.capture_files),
         capture_rich_text: AtomicBool::new(s.capture_rich_text),
         auto_copy_file: AtomicBool::new(s.auto_copy_file),

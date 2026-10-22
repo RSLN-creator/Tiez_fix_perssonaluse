@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { invoke } from "@tauri-apps/api/core";
 import { supportsCustomBackground } from "../config/themes";
 
 interface UseCustomBackgroundOptions {
@@ -18,18 +17,17 @@ export const useCustomBackground = ({
     const root = document.documentElement;
     const body = document.body;
     root.style.setProperty("--custom-bg-opacity", (customBackgroundOpacity / 100).toString());
-    const active = Boolean(customBackground) && supportsCustomBackground(theme);
-    if (active) {
+    if (customBackground && supportsCustomBackground(theme)) {
       root.style.setProperty("--custom-bg-image", `url("${convertFileSrc(customBackground)}")`);
       body.classList.add("has-custom-bg");
+      // Also flag the <html> element: base.css gives html and body the same
+      // border-radius + overflow:hidden, so squaring only one of them still
+      // clips the window back to the CSS arc at every corner.
+      root.classList.add("has-custom-bg");
     } else {
       root.style.removeProperty("--custom-bg-image");
       body.classList.remove("has-custom-bg");
+      root.classList.remove("has-custom-bg");
     }
-    // The CSS shell paints its own rounded corners; while a custom background is
-    // active, disable the native DWM rounding + backdrop so the window silhouette
-    // and the painted background share exactly one corner radius (no interleaved
-    // arcs / square backdrop wedges at the edges).
-    invoke("set_custom_background_state", { active }).catch(console.error);
   }, [customBackground, theme, customBackgroundOpacity]);
 };
